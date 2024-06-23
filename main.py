@@ -1,10 +1,11 @@
 import logging
 
 from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI, status
 from pydantic import BaseModel
-from typing import List
+from typing import Dict
 import uvicorn
 
 logger = logging.getLogger('uvicorn.error')
@@ -66,7 +67,6 @@ books = {
 
 
 class Book(BaseModel):
-    id: int
     title: str
     author: str
     publisher: str
@@ -83,7 +83,7 @@ class BookUpdateModel(BaseModel):
     language: str | None = None
 
 
-@app.get('/books', response_model=List[Book])
+@app.get('/books', response_model=Dict[int, Book])
 async def get_all_book():
     return books
 
@@ -97,7 +97,7 @@ async def create_a_book(book_data: Book) -> dict:
     return new_book
 
 
-@app.get('/book/{book_id}')
+@app.get('/books/{book_id}')
 async def get_book(book_id: int) -> dict:
 
     if book_id in books:
@@ -106,13 +106,13 @@ async def get_book(book_id: int) -> dict:
             status_code=status.HTTP_302_FOUND
         )
 
-    return JSONResponse(
-        content={"msg": f"Book with id {book_id} not found"}, 
-        status_code=status.HTTP_404_NOT_FOUND
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={"msg": f"Book with id {book_id} not found"}
     )
 
 
-@app.patch('/pbook/{book_id}', response_model=BookUpdateModel)
+@app.patch('/pbooks/{book_id}', response_model=BookUpdateModel)
 async def update_pbook(book_id: int, book: BookUpdateModel) -> JSONResponse:
     try:
         stored_book_data = books[book_id]
@@ -125,37 +125,45 @@ async def update_pbook(book_id: int, book: BookUpdateModel) -> JSONResponse:
             status_code=status.HTTP_200_OK
         )
     except:
-        return JSONResponse(
-            content={"msg": f"It was not possible to update book {book_id}"},
-            status_code=status.HTTP_304_NOT_MODIFIED
+        raise HTTPException(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            detail={"msg": f"It was not possible to update book {book_id}"}
         )
 
 
-@app.patch('/book/{book_id}')
+@app.patch('/books/{book_id}')
 async def update_book(book_id: int, book_update_data: BookUpdateModel) -> dict:
-    logger.debug(book_update_data)
-    for book in books:
-        if book['id'] == book_id:
-            book['title'] = book_update_data.title
-            book['author'] = book_update_data.author
-            book['publisher'] = book_update_data.publisher
-            book['page_count'] = book_update_data.page_count
-            book['language'] = book_update_data.language
+    if book_id in books:
+        book = books[book_id]
+        book['title'] = book_update_data.title
+        book['author'] = book_update_data.author
+        book['publisher'] = book_update_data.publisher
+        book['page_count'] = book_update_data.page_count
+        book['language'] = book_update_data.language
 
-            return JSONResponse(
-                content=book,
-                status_code=status.HTTP_200_OK
-            )
+        return JSONResponse(
+            content=book,
+            status_code=status.HTTP_200_OK
+        )
 
-    return JSONResponse(
-        content={"msg": "Not found"},
-        status_code=status.HTTP_404_NOT_FOUND
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={"msg": "Not found"}
     )
 
 
-@app.delete('/book/{book_id}')
-async def delete_book(book_id: int) -> dict:
-    pass
+@app.delete('/books/{book_id}')
+async def delete_book(book_id: int):
+    if book_id in books:
+        del books[book_id]
+        return JSONResponse(
+            content={},
+            status_code=status.HTTP_200_OK
+        )
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={"msg": f"Book with {book_id} not found"}
+    )
 
 
 if __name__ == '__main__':
